@@ -613,7 +613,7 @@ def handle_defend_command(args: Any) -> int:
         print("RISK! List everything a normal user can!")
     elif guestUserRoleId == '10dae51f-b6af-4016-8d66-8c2a99b929b3':
         print("Guest users have limited access to properties and memberships of directory objects (default)")
-        print("RIST! Enumerate management group principal ids and lookup technique possible!")
+        print("RISK! Enumerate management group principal ids and lookup technique possible!")
     elif guestUserRoleId == '2af84b1e-32c8-42b7-82bc-daa82404023b':
         print("Guest user access is restricted to properties and memberships of their own directory objects (most restrictive)")
         print("RISK! Enumerate management group principal only!")

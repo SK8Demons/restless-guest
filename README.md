@@ -2,7 +2,7 @@
 
 <img alt="restless-guest-logo" src="https://github.com/HothIndustries/restless-guest/blob/main/logo.png?raw=true"/>
 
-A cli toolkit for "restless guest" exploits. See [Pt 1](https://www.beyondtrust.com/blog/entry/restless-guests), [Pt 2](https://www.beyondtrust.com/blog/entry/evil-vm) blogs. 
+A cli toolkit for "restless guest" exploits. See [Pt 1](https://www.beyondtrust.com/blog/entry/restless-guests), [Pt 2](https://www.beyondtrust.com/blog/entry/evil-vm) blogs. Pt1 - "Resless Guests" explains core security model at play, "Evil VM" pt 2 describes how to attack in ths priv model. 
 
 This tool enables Entra (Azure AD) tenant attacks through "restless guest". The key concept we exploit is that by being a billing administrator from an attacker-controlled tenant, by default, we can create subscriptions in target tenants. This enables:
 
@@ -192,12 +192,10 @@ options:
 
 ```
 
-List subscriptions we have access to in tenant
-```
-
 ### `sub list`
 
-List subscriptions in tenant user is authenticating to.
+List subscriptions we have access to in tenant...
+
 
 ```
 rlg sub list --help
@@ -211,6 +209,8 @@ options:
 ```
 
 ### `sub resources`
+
+List all resources in a subscription...
 
 ```
 rlg sub resources --help
