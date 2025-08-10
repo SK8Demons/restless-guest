@@ -1,6 +1,6 @@
 # restless guest 
 
-<img alt="restless-guest-logo" src="https://github.com/HothIndustries/restless-guest/blob/main/logo.png?raw=true"/>
+<img alt="restless-guest-logo" src="https://github.com/kidtronnix/restless-guest/blob/main/logo.png?raw=true"/>
 
 A cli toolkit for "restless guest" exploits. See [Pt 1](https://www.beyondtrust.com/blog/entry/restless-guests), [Pt 2](https://www.beyondtrust.com/blog/entry/evil-vm) blogs. Pt1 - "Resless Guests" explains core security model at play, "Evil VM" pt 2 describes how to attack in ths priv model. 
 
