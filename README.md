@@ -15,7 +15,7 @@ This tool enables Entra (Azure AD) tenant attacks through "restless guest". The 
 
 ## definitions
 
-- HOME TENANT - attacker controlled tenant
+- HOME TENANT = attacker controlled tenant
 - RESOURCE TENANT = target tenant for attacker
 - RESTLESS GUEST = guest in RESOURCE tenant who is a BILLING ADMIN user in HOME tenant
 - BILLING ADMIN = user has a billing role in HOME tenant that allows them to create subscriptions
