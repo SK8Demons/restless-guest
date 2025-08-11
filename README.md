@@ -140,25 +140,15 @@ usage: rlg sub persist [-h] [auth options...] --resource-group RESOURCE_GROUP --
 
 options:
   -h, --help            show this help message and exit
-  --resource-group RESOURCE_GROUP  Resource group name
-  --identity-name IDENTITY_NAME    Name of the managed identity to create
-  --region REGION       Azure region to create resources in (default: eastus)
-  --subscription-id SUBSCRIPTION_ID  Target subscription ID
-  --tenant-id TENANT_ID         Target tenant ID
-  --issuer ISSUER      JWT issuer for federated credentials
-  --subject SUBJECT    JWT subject for federated credentials
-  --credential-name CREDENTIAL_NAME  Name for the federated credential
-  --audiences AUDIENCES [AUDIENCES ...]  Valid JWT audiences
-
-
-  --identity-name IDENTITY_NAME   Managed identity name (default: GuestIdentity)
-  --region REGION       Azure region (default: eastus)
-  --subscription-id SUBSCRIPTION_ID  Target subscription ID
-  --tenant-id TENANT_ID         Tenant ID for managed identity
-  --issuer ISSUER      OIDC issuer URL for federated credential
-  --subject SUBJECT    Subject identifier for federated credential
-  --credential-name CREDENTIAL_NAME  Federated credential name (default: DefaultCredential)
-  --audiences AUDIENCES Token audiences (default: api://AzureADTokenExchange)
+  --resource-group RESOURCE_GROUP Resource group name
+  --identity-name IDENTITY_NAME Managed identity name (default: GuestIdentity)
+  --region REGION Azure region (default: eastus)
+  --subscription-id SUBSCRIPTION_ID Target subscription ID
+  --tenant-id TENANT_ID Tenant ID for managed identity
+  --issuer ISSUER OIDC issuer URL for federated credential
+  --subject SUBJECT Subject identifier for federated credential
+  --credential-name CREDENTIAL_NAME Federated credential name (default: DefaultCredential)
+  --audiences AUDIENCES [AUDIENCES ...] Token audiences (default: api://AzureADTokenExchange)
 ```
 
 
@@ -236,6 +226,8 @@ For convenience the following options can instead for basic auth, or interactive
 
 
 ## sources
+
+Please note their are further attack steps required that fall out the scope of this tool. These are detailed by these articles.
 
 - use local admin of device to steal device cert - https://aadinternals.com/post/deviceidentity/
 - upgrade phished refresh token to PRT - https://dirkjanm.io/phishing-for-microsoft-entra-primary-refresh-tokens

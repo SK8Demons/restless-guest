@@ -13,7 +13,6 @@ from pprint import pprint
 # Import our custom modules
 import config as cfg
 import auth
-import jwt_utils
 import arm_api
 import graph_api
 import json
@@ -44,10 +43,6 @@ def handle_subiam_command(args: Any) -> int:
         logging.error("Failed to obtain authentication token")
         return 1
 
-    # Verbose: inspect JWT claims (only all claims section)
-    if getattr(args, 'verbose', False):
-        print("=== JWT ALL CLAIMS ===")
-        jwt_utils.inspect_azure_token(arm_token, True, only_all_claims=True)
 
     assignments = arm_api.enum_role_assignments(arm_token, subscription_id)
 
@@ -705,8 +700,6 @@ def handle_subassign_command(args: Any) -> int:
         logging.error("Failed to obtain authentication token")
         return 1
 
-    # Inspect JWT token if verbose mode is enabled
-    jwt_utils.inspect_azure_token(arm_token, getattr(args, 'verbose', False))
 
     # Build the role definition ID - if it's just a UUID, build the full path
     if "/" not in role_id:
@@ -943,11 +936,6 @@ def handle_subresources_command(args: Any) -> int:
         logging.error("Failed to obtain authentication token")
         return 1
 
-    # Inspect JWT token if verbose mode is enabled
-    jwt_utils.inspect_azure_token(token, getattr(args, 'verbose', False))
-    
-    # Check token scopes for Resource Graph API
-    jwt_utils.inspect_token_scopes_for_resource_graph(token, getattr(args, 'verbose', False))
 
     print("=== SUBSCRIPTION RESOURCES ===")
     print(f"Subscription ID: {args.subscription_id}")

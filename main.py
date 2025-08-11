@@ -43,7 +43,7 @@ def global_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-u", "--username", help="Username")
     parser.add_argument("-p", "--password", help="User's password")
     parser.add_argument("-i", "--interactive", action="store_true", help="Interactive mode")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output including JWT token inspection")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
 
 def main() -> int:
     """Main entry point for the application."""
@@ -127,7 +127,7 @@ def main() -> int:
 
 
     # defend command
-    defend_parser = subparsers.add_parser('defend', help='Check external collaboration security settings')
+    defend_parser = subparsers.add_parser('defend', help='Check external collaboration security settings (admin priv required)')
     global_args(defend_parser)
 
     # tenants command
