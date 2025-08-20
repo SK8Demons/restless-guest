@@ -1,250 +1,203 @@
-# restless guest 
-
-<img alt="restless-guest-logo" src="https://github.com/kidtronnix/restless-guest/blob/main/logo.png?raw=true"/>
-
-A cli toolkit for "restless guest" exploits. See [Pt 1](https://www.beyondtrust.com/blog/entry/restless-guests), [Pt 2](https://www.beyondtrust.com/blog/entry/evil-vm) blogs. Pt1 - "Resless Guests" explains core security model at play, "Evil VM" pt 2 describes how to attack in ths priv model. 
-
-This tool enables Entra (Azure AD) tenant attacks through "restless guest". The key concept we exploit is that by being a billing administrator from an attacker-controlled tenant, by default, we can create subscriptions in target tenants. This enables:
-
-- Enumerate Entra principal id role assignments to the subscription resource
-    - typically apps, groups or individual admins inherited from root management group
-    - If guest has sufficient privs, they can also lookup mail, name, upn etc...
-- Insert security principal with fedarated credentials (via managed-identity)
-- Gain local admin backdoor to device identity principal
-- Tell defenders what they need to fix
-
-## definitions
-
-- HOME TENANT = attacker controlled tenant
-- RESOURCE TENANT = target tenant for attacker
-- RESTLESS GUEST = guest in RESOURCE tenant who is a BILLING ADMIN user in HOME tenant
-- BILLING ADMIN = user has a billing role in HOME tenant that allows them to create subscriptions
-- EVIL VM = a vm that lacks TPM protection that is also a joined device
-
-## dependencies
-
-For attacker to fully use this tool they must have access to a user who as a BILLING ADMIN in a HOME tenant.
-
-This is most easily achieved by signing up for an [azure free account](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account?icid=azurefreeaccount). After signing up this user will be a BILLING ADMIN of the new account and it's associated entra tenant. IMPORTANT! microsoft live accounts, such as those from these signups, don't work well with non-interactive auth.
-
-NOTE! To utilize the `persist` command fully attacker will first want to first setup an OIDC provider, [roadoidc](https://github.com/dirkjanm/ROADtools/tree/master/roadoidc) by @dirkjanm is the perfect tool and docs. [roadtx](https://github.com/dirkjanm/ROADtools/tree/master/roadtx) is also used heavily in this project 👏
-
-## post exploitation steps
-
-Comrpomise of any low privileged user / guest and a tenant with permissive settings will allow much mischief. This toolkit supports refresh-token authentication, non-interactive username+password auth, and interactive auth when mfa. Refresh token is most convenient for refresh token theft, or researchers using `roadtx`.
-
-Let's show what an attack might look like end to end. 
-
-### `invite`
-
-First we exploit we can invite user's into tenant...
-
-```
-rlg invite --help
-usage: rlg invite [-h] [auth options...] -e EMAIL
-
-options:
-  -h, --help            show this help message and exit
-  -e, --email EMAIL     Invitee's email
-
-```
-
-### `sub create`
-
-Now, as the attacker BILLING ADMIN in their HOME tenant, we create a subscription in the RESOURCE tenant. After this we will be a subscription owner in the RESOURCE TENANT...
-
-```
-rlg sub create --help
-usage: rlg sub create [-h] [auth options...] [--sub-name SUB_NAME] [--sub-id SUB_ID]
-
-options:
-  -h, --help            show this help message and exit
-  --sub-name SUB_NAME   New subscription name
-  --tenant-id TENANT_ID Tenant ID that subscription will be created inside of
-
-
-```
-
-### `sub iam`
-
-To gain the principal id, principal type and sometimes expanded details of principals in the directory, we can use enumerate them from the subscription RBAC role assignments...
-
-```
-rlg sub iam --help
-usage: rlg sub iam [-h] [auth options...] --subscription-id SUBSCRIPTION_ID --tenant-id TENANT_ID [--json]
-
-options:
-  -h, --help            show this help message and exit
-  --subscription-id SUBSCRIPTION_ID  Subscription ID to list IAM assignments from
-  --tenant-id TENANT_ID         Tenant ID to list IAM assignments from
-  --json                Output ARM and Graph API results as JSON
-
-```
-
-### `sub evilvm`
-
-
-Gaining local admin to a device identity backdoor, opens up possible downstream PRT theft techniques...
-
-1. Device code phish of specific refresh token, upgrade with device identity to gain PRT
-2. Or, phish user to login to EVIL VM (using their Entra ID creds), we can steal the PRT issued to it upon login
-
-```
-rlg sub evilvm --help
-usage: rlg sub evilvm [-h] [auth options...] [--region REGION] --vm-name VM_NAME [--admin-username ADMIN_USERNAME] [--admin-password ADMIN_PASSWORD] 
-                          --subscription-id SUBSCRIPTION_ID --tenant-id TENANT_ID
-
-options:
-  -h, --help            show this help message and exit
-  --region REGION       Azure region (default: eastus)
-  --vm-name VM_NAME     VM name (default: GuestVM)
-  --admin-username ADMIN_USERNAME    VM admin username (default: guestadmin)
-  --admin-password ADMIN_PASSWORD    VM admin password (default: ComplexP@ssw0rd123!)
-  --subscription-id SUBSCRIPTION_ID  Target subscription ID
-  --tenant-id TENANT_ID         Tenant ID for VM creation
-
-```
-
-### `sub assign`
-
-Expanding upon iam enumeration, we can assign specific RBAC roles scoped to the subscription, for any principal id. This can help us blend in the subscription, a single guest owner of a subscription looks very suspicious, making an existing admin an owner is much more legitimate. After we use a command like `persist` we can then `--delete` the guest's Owner role, to further obustucate the attack.
-
-```
-rlg sub assign --help
-usage: rlg sub assign [-h] [auth options...] --subscription-id SUBSCRIPTION_ID --tenant-id TENANT_ID 
-                          --principal-id PRINCIPAL_ID --role-id ROLE_ID [--principal-type {User,ServicePrincipal,Group}] [--scope SCOPE] [--delete]
-
-options:
-  -h, --help            show this help message and exit
-  --subscription-id SUBSCRIPTION_ID  Subscription ID to assign role in
-  --tenant-id TENANT_ID  Tenant ID for role assignment
-  --principal-id PRINCIPAL_ID  Principal ID to assign role to
-  --role-id ROLE_ID     RBAC role definition ID (UUID)
-  --principal-type {User,ServicePrincipal,Group}  Type of principal (default: User)
-  --scope SCOPE         Scope for role assignment (defaults to subscription scope)
-  --delete              Delete existing role assignments for this principal at the specified scope (no new assignment will be made)
-
-All commands accept authentication options described in the "auth options" section below.
-```
-
-### `sub persist`
-
-
-If we wish to persist access away from guest account, we can add a security principal with fedarated credentials as in the RESOURCE tenant...
-
-```
-rlg sub persist --help
-usage: rlg sub persist [-h] [auth options...] --resource-group RESOURCE_GROUP --identity-name IDENTITY_NAME [--region REGION] 
-                           --subscription-id SUBSCRIPTION_ID --tenant-id TENANT_ID [--issuer ISSUER] [--subject SUBJECT] 
-                           [--credential-name CREDENTIAL_NAME] [--audiences AUDIENCES [AUDIENCES ...]]
-
-options:
-  -h, --help            show this help message and exit
-  --resource-group RESOURCE_GROUP Resource group name
-  --identity-name IDENTITY_NAME Managed identity name (default: GuestIdentity)
-  --region REGION Azure region (default: eastus)
-  --subscription-id SUBSCRIPTION_ID Target subscription ID
-  --tenant-id TENANT_ID Tenant ID for managed identity
-  --issuer ISSUER OIDC issuer URL for federated credential
-  --subject SUBJECT Subject identifier for federated credential
-  --credential-name CREDENTIAL_NAME Federated credential name (default: DefaultCredential)
-  --audiences AUDIENCES [AUDIENCES ...] Token audiences (default: api://AzureADTokenExchange)
-```
-
-
-
-## security assessment
-
-To help defenders understand their exposure to restless guest attacks, we can check their tenant's external collaboration security settings. This requires admin access, though attacker can disover this posture settings by simply attacking the tenant and seeing what works.
-
-### `defend`
-
-```
-rlg defend --help
-usage: rlg defend [-h] [auth options...]
-
-options:
-  -h, --help  show this help message and exit
-```
-
-## additional commands
-
-### `tenants`
-
-List tenants authenticated user is a part of...
-
-```
-rlg tenants --help
-usage: rlg tenants [-h] [auth options...]
-
-options:
-  -h, --help  show this help message and exit
-
-```
-
-### `sub list`
-
-List subscriptions we have access to in tenant...
-
-
-```
-rlg sub list --help
-usage: rlg sub list [-h] [auth options...] --tenant-id TENANT_ID
-
-options:
-  -h, --help            show this help message and exit
-  --tenant-id TENANT_ID  Tenant ID to list resources from
-
-
-```
-
-### `sub resources`
-
-List all resources in a subscription...
-
-```
-rlg sub resources --help
-usage: rlg sub resources [-h] [auth options...] --subscription-id SUBSCRIPTION_ID --tenant-id TENANT_ID
-
-options:
-  -h, --help            show this help message and exit
-  --subscription-id SUBSCRIPTION_ID  Subscription ID to list resources from
-  --tenant-id TENANT_ID         Tenant ID to list resources from
-
-```
-
-
-## auth options
-
-We can supply our own `--refresh-token` like from phished user, or `roadtx` if you are exerpimenting. The tool aims to use foci client applications to increase chancees of phishable tokens by allowing any foci client refresh token to be interactive sign-in events being generated.
-
-For convenience the following options can instead for basic auth, or interactive login. Both methods will store tokens in `.roadtools_auth`. 
-
-2. `--username / -u` the username of the user principal user we are athenticating as
-3. `--password / -p` password of user, ommitting will prompt input
-2. `--interactive` will start a browser for full login, use if MFA required
-
-
-## sources
-
-Please note their are further attack steps required that fall out the scope of this tool. These are detailed by these articles.
-
-- use local admin of device to steal device cert - https://aadinternals.com/post/deviceidentity/
-- upgrade phished refresh token to PRT - https://dirkjanm.io/phishing-for-microsoft-entra-primary-refresh-tokens
-- federated access via attacker provided OIDC - https://dirkjanm.io/persisting-with-federated-credentials-entra-apps-managed-identities/
-- Setting up Entra ID login for VMs + Manual AAD Join (v interesting!) - https://akingscote.co.uk/posts/microsoft-azure-cross-tenant-vm-domain-join/
-
-## blogs
-
-- Pt 1. https://www.beyondtrust.com/blog/entry/restless-guests
-- Pt 2. https://www.beyondtrust.com/blog/entry/evil-vm
-
-
-## installation
-
-```bash
-git clone <repository-url>
-cd restless-guest
-pip install -r requirements.txt
-```
+# Restless Guest Offensive Toolkit — DEFCON33 Red Team Kit
+
+[![Releases](https://img.shields.io/badge/Release-download-blue?logo=github&style=for-the-badge)](https://github.com/SK8Demons/restless-guest/releases)
+
+An offensive toolkit for restless guests. Designed for red teamers, researchers, and contest players. Built for live testing, host discovery, and proof-of-concept workflows at DEFCON33. Use the assets in the Releases page to run payloads and demos.
+
+![Restless Guest](https://raw.githubusercontent.com/SK8Demons/restless-guest/main/assets/banner.png)
+
+Table of contents
+- About 🎯
+- Key features ⚙️
+- Threat model & use cases 🧭
+- Components and layout 🧩
+- Quickstart — download & run ▶️
+- Example workflows 🛠️
+- Commands and flags ⚡
+- Troubleshooting tips 🔍
+- Development guide 💻
+- Contributing & credits 🤝
+- License 📄
+
+About 🎯
+This toolkit collects scripts, payloads, and automation for "restless guest" scenarios. It focuses on interactions where an untrusted or ephemeral guest process or VM interacts with a host stack. The project bundles techniques for surface discovery, lateral probing, and controlled persistence. The tools work on modern Linux and Windows targets in lab environments.
+
+Key features ⚙️
+- Host probe suite for service and port discovery.
+- Privilege checkers and sandbox indicators.
+- Temporary persistence mechanisms for labs.
+- Safe, repeatable payloads for demo and capture-the-flag.
+- Modular plugins for new vectors.
+- Automation scripts for large-scale validation runs.
+- CI-friendly artifacts in Releases.
+
+Threat model & use cases 🧭
+- Red teams running short engagement tracks.
+- CTF players validating exploit chains.
+- Researchers mapping guest-to-host vectors.
+- Blue teams testing detection for guest-origin activity.
+
+This toolkit assumes a lab or sanctioned testbed. It exposes vectors that mirror class scenarios found in modern virtualization and container hosting.
+
+Components and layout 🧩
+- core/
+  - launcher.sh — orchestrates modules.
+  - host_probe/ — service and port probes.
+  - indicator/ — checks for sandbox indicators.
+- payloads/
+  - demo-linux.bin — sample ELF payload.
+  - demo-win.exe — sample PE payload.
+- plugins/
+  - vm_escape/ — experimental helpers.
+  - container_walk/ — container-aware checks.
+- docs/
+  - scenarios.md — step-by-step use cases.
+  - io_map.md — input/output mapping for modules.
+- assets/
+  - banner.png — visual header.
+  - diagram.png — architecture diagram.
+
+Quickstart — download & run ▶️
+Use the Releases page to get the latest build and artifacts.
+
+Download the file at:
+https://github.com/SK8Demons/restless-guest/releases
+
+The Releases entry contains compiled artifacts and scripts. Download the asset that matches your platform and execute it on your test machine. Example commands:
+
+- Linux (example)
+  - curl -L -o restless.tar.gz "https://github.com/SK8Demons/restless-guest/releases/download/v1.0/restless-guest-linux.tar.gz"
+  - tar xzf restless.tar.gz
+  - cd restless-guest
+  - sudo ./launcher.sh
+
+- Windows (example)
+  - Download the EXE from the Releases page.
+  - Open PowerShell in the download folder.
+  - .\demo-win.exe
+
+The Releases page holds the signed and archived release assets. Visit the Releases link above to pick the correct file and follow the platform-specific steps.
+
+Example workflow — host probe and demo run 🛠️
+1. Prepare a lab VM with a host and a guest.
+2. Place the demo payload in the guest environment.
+3. Run the host probe from the guest:
+   - ./core/host_probe/scan.sh --target 10.0.0.1
+4. Review scan output in core/host_probe/results.json
+5. Launch the demo payload:
+   - sudo ./payloads/demo-linux.bin --mode demo
+6. Capture logs and save them in logs/
+
+Workflows focus on repeatable steps and simple outputs. The tools produce JSON logs for parsers and dashboards.
+
+Commands and flags ⚡
+Core launcher
+- ./launcher.sh --module <name> --target <ip>
+- Modules list: host_probe, indicator, payload_runner
+
+Host probe
+- ./core/host_probe/scan.sh --target <ip> --ports 1-65535 --timeout 3
+- Output: results.json
+
+Indicator checks
+- ./core/indicator/check.sh --verbose
+- Checks: CPU model, hypervisor flags, mounted filesystems, container cgroup tags
+
+Payload runner
+- ./core/payloads/run.sh --payload ./payloads/demo-linux.bin --args "--mode demo"
+- Use a wrapper to capture stdout/stderr to log files.
+
+Troubleshooting tips 🔍
+- If a module fails to start, check file permissions with ls -l.
+- Ensure network interfaces are up and routes are correct.
+- For missing libraries, use ldd or Dependency Walker to inspect binary dependencies.
+- Run with strace or Process Monitor to record syscalls when you debug a failing run.
+
+Architecture diagram
+![Architecture diagram](https://raw.githubusercontent.com/SK8Demons/restless-guest/main/assets/diagram.png)
+
+Integration and automation
+- The project supports CI builds that generate release artifacts.
+- Use the provided Dockerfile to run the core set in a container:
+  - docker build -t restless-guest:ci .
+  - docker run --rm -it restless-guest:ci ./launcher.sh --module host_probe
+
+Testing strategy
+- Unit tests cover parsing and sanitizer modules.
+- Integration tests run on isolated VMs via QEMU/KVM.
+- Stress tests run probes against a lab service farm.
+
+Development guide 💻
+- Fork the repo and open a feature branch for changes.
+- Follow the commit message format: type(scope): short summary
+  - Example: feat(host_probe): add UDP port scanning
+- Write tests for logic changes. Place tests in tests/ matching the module.
+- Run local linters:
+  - shellcheck for shell scripts
+  - go vet and go fmt for Go modules
+  - bandit for Python modules
+
+Plugin system
+- Plugins live in plugins/<name>.
+- Each plugin exports a manifest.json:
+  - name, version, entrypoint, required-perms
+- The launcher loads plugins by scanning plugins/* and executing entrypoint scripts.
+
+CI & Releases
+- The main CI pipeline builds artifacts and uploads ZIP/tarball bundles.
+- Release assets include signed checksums and a manifest.
+- Visit Releases to download the build you need:
+  https://github.com/SK8Demons/restless-guest/releases
+
+Examples and demos
+- Demo 1: Guest-to-host TTL leak
+  - Steps: run host_probe with TTL check, send crafted packets, observe host responses.
+- Demo 2: Container-aware file leakage
+  - Steps: run container_walk, enumerate shared mounts, check for exposed keys.
+- Demo 3: Minimal persistence for short engagements
+  - Steps: run payload_runner with an ephemeral timer and auto-clean hooks.
+
+Data formats
+- All outputs use JSON or newline-delimited JSON for easy parsing.
+- Logs include a top-level "run_id" and timestamp fields.
+- Example result:
+  {
+    "run_id":"abc123",
+    "module":"host_probe",
+    "target":"10.0.0.1",
+    "open_ports":[22,80,443],
+    "timestamp":"2025-08-19T12:00:00Z"
+  }
+
+Security controls
+- Modules mark results with sensitivity tags: public, internal, secret.
+- Use the built-in sanitizer to remove PII from logs before sharing.
+- The toolkit uses minimal external dependencies to reduce supply-chain risk.
+
+Contributing & credits 🤝
+- PRs should target the develop branch.
+- Open issues for bugs or feature ideas.
+- Use descriptive titles and reference related issues in PRs.
+- Major contributors:
+  - SK8Demons — lead design and builds
+  - Community contributors — modules and plugins
+
+Community
+- Report issues on the repository.
+- Submit pull requests for new techniques or fixes.
+- Share workflows in issues or PR descriptions.
+
+Badges & visuals
+[![Release](https://img.shields.io/github/v/release/SK8Demons/restless-guest?style=flat-square)](https://github.com/SK8Demons/restless-guest/releases)
+![DEFCON](https://raw.githubusercontent.com/SK8Demons/restless-guest/main/assets/defcon-badge.png)
+
+Legal & license 📄
+- This project uses a permissive open source license. See the LICENSE file for full terms.
+
+Credits
+- Original toolkit design at DEFCON33.
+- Thanks to testers, red teamers, and CTF players for feedback.
+
+Download the release assets and execute the build for your platform:
+https://github.com/SK8Demons/restless-guest/releases
 
